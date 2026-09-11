@@ -61,7 +61,7 @@ Then restart pi, pick a Z.ai model (`zai` / `zai-glm` provider), and the meter a
  z.ai max week ▰▱▱▱▱▱▱▱ 11% resets in 5d 9h
 ```
 
-4. `/zai:usage` refreshes on demand and echoes every window as a notification.
+1. `/zai:usage` refreshes on demand and echoes every window as a notification.
 
 ## Commands
 
