@@ -1,4 +1,6 @@
 allowBuilds:
-  '@google/genai': set this to true or false
-  esbuild: set this to true or false
-  protobufjs: set this to true or false
+  # Transitive devDependencies of the pi package; only tests
+  # and typecheck run here, so no native build scripts are needed.
+  "@google/genai": false
+  esbuild: false
+  protobufjs: false
