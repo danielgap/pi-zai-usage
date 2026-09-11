@@ -1,0 +1,47 @@
+{
+	"name": "pi-zai-usage",
+	"version": "0.1.0",
+	"description": "Z.ai GLM Coding Plan usage meter for pi: a standalone widget and /zai:usage command reading the z.ai quota endpoint.",
+	"license": "MIT",
+	"type": "module",
+	"keywords": [
+		"pi-package",
+		"pi",
+		"pi-coding-agent",
+		"zai",
+		"z.ai",
+		"glm",
+		"usage",
+		"quota"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/danielgap/pi-zai-usage.git"
+	},
+	"files": [
+		"extensions/",
+		"lib/",
+		"tests/",
+		"README.md"
+	],
+	"scripts": {
+		"test": "node --experimental-strip-types --test tests/*.test.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": ">=0.85.1"
+	},
+	"peerDependenciesMeta": {
+		"@earendil-works/pi-coding-agent": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@earendil-works/pi-coding-agent": "0.85.1",
+		"@types/node": "^24.13.3",
+		"typescript": "^5.9.3"
+	},
+	"pi": {
+		"extensions": ["./extensions"]
+	}
+}
