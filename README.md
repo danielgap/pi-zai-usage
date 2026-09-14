@@ -98,6 +98,23 @@ This package is the decoupled home of the usage meter while the official gentle-
 - `lib/zai-usage.ts` is lifted verbatim from gentle-pi's `lib/shell-usage.ts` (branch `feat/zai-usage-meter`), including its parser tests. When gentle-pi ships the official integration, both stay in sync by shared provenance, and this package retires.
 - The rendering is a port, not a lookalike: the status paints `renderUsageBar`'s exact bar segment (8-cell gauge with accent/warning/error tones and border-dimmed empty cells) and `lib/zai-usage-view.ts` ports gentle-pi's `UsageView` frame — same `✿ Subscriptions` title, same 16-cell panel meters, same `r refresh · esc close` keys — through pi's public `setStatus`/`ui.custom` contracts only. gentle-pi is never read or patched: it renders the status through the same `getExtensionStatuses()` footer contract pi documents, so any gentle-pi update keeps this working. No pi-tui dependency, no forked UI.
 
+## Releasing
+
+Releases publish automatically from version tags through [`.github/workflows/publish.yml`](.github/workflows/publish.yml):
+
+1. Bump `package.json` to the next version, commit, and push to `main`.
+2. Tag the release on the freshly fetched `origin/main` commit — the workflow verifies the tag is annotated, matches `package.json`'s version, and points to a commit reachable from `main`:
+
+   ```bash
+   git fetch origin main --tags
+   git tag -a vX.Y.Z "$(git rev-parse 'origin/main^{commit}')" -m "pi-zai-usage vX.Y.Z"
+   git push origin refs/tags/vX.Y.Z
+   ```
+
+3. CI installs, tests, typechecks, packs, publishes to npm with provenance, creates the GitHub Release if it is missing, and verifies the registry.
+
+First-time setup: add an `NPM_TOKEN` secret (automation or granular token with publish rights for `pi-zai-usage`) under **Settings → Secrets and variables → Actions**. A run that failed for publication-only reasons can be retried without moving the tag: dispatch the workflow with the existing tag (`gh workflow run publish.yml -f tag=vX.Y.Z`).
+
 ## Development
 
 ```bash
