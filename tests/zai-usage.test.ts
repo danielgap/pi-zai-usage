@@ -1,17 +1,28 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+	clipToWidth,
 	fetchZaiUsage,
 	formatReset,
+	gaugeTone,
 	isZaiUsageProvider,
+	paintGauge,
 	parseZaiUsage,
-	renderPlainLines,
+	plainTheme,
+	renderGauge,
+	renderUsageBar,
+	renderUsagePanel,
+	USAGE_EMPTY_MESSAGE,
+	visibleWidth,
 	windowLabel,
 	ZAI_GLM_PROVIDER,
+	ZAI_PENDING_NOTE,
 	ZAI_PROVIDER,
 	ZAI_USAGE_PROVIDERS,
 	ZAI_USAGE_URL,
+	type ProviderUsage,
 } from "../lib/zai-usage.ts";
+import { ZaiUsageView } from "../lib/zai-usage-view.ts";
 
 const NOW = 1_789_000_000_000;
 
@@ -226,19 +237,64 @@ test("fetchZaiUsage sends the bearer key and parses the quota payload", async ()
 	);
 });
 
-test("renderPlainLines draws one meter line per window with the reset note", () => {
-	const usage = parseZaiUsage(ZAI_GLM_PROVIDER, ZAI_PAYLOAD, NOW);
-	const lines = renderPlainLines(usage, NOW);
-	assert.equal(lines.length, 2);
-	assert.match(lines[0] ?? "", /^z\.ai max 5h ▱▱▱▱▱▱▱▱ 5% /);
-	assert.match(lines[1] ?? "", /^z\.ai max week /);
-	assert.ok(
-		(lines[1] ?? "").includes("resets in"),
-		"the weekly window names its reset",
-	);
+test("the gauge mirrors gentle-pi's shell-gauge: cells, clamps, and tones", () => {
+	assert.equal(renderGauge(50, 8), "▰▰▰▰▱▱▱▱");
+	assert.equal(renderGauge(0), "▱▱▱▱▱▱▱▱");
+	assert.equal(renderGauge(100, 16), "▰".repeat(16));
+	assert.equal(renderGauge(137, 8), "▰".repeat(8), "over-range clamps to full");
+	assert.equal(gaugeTone(0), "accent");
+	assert.equal(gaugeTone(79.9), "accent");
+	assert.equal(gaugeTone(80), "warning");
+	assert.equal(gaugeTone(94.9), "warning");
+	assert.equal(gaugeTone(95), "error");
 });
 
-test("renderPlainLines flags a reached limit and explains a windowless payload", () => {
+test("paintGauge splits tones: filled by threshold, empty cells in border", () => {
+	const recorded: Array<[string, string]> = [];
+	const theme = {
+		fg(color: string, text: string) {
+			recorded.push([color, text]);
+			return `[${color}]${text}`;
+		},
+	};
+	assert.equal(paintGauge(50, theme, 4), "[accent]▰▰[border]▱▱");
+	assert.deepEqual(recorded, [
+		["accent", "▰▰"],
+		["border", "▱▱"],
+	]);
+});
+
+test("visibleWidth ignores ANSI codes and clipToWidth cuts with an ellipsis", () => {
+	const painted = "\x1b[31mabc\x1b[0mdef";
+	assert.equal(visibleWidth(painted), 6);
+	assert.equal(visibleWidth("▰▰▱▱"), 4);
+	assert.equal(clipToWidth("abcdef", 5), "abcd…");
+	assert.equal(clipToWidth("abc", 5), "abc");
+	assert.equal(visibleWidth(clipToWidth(painted, 4)), 4);
+});
+
+test("renderUsageBar draws the Gentle Shell bar segment: first window gauged, rest compact", () => {
+	const usage = parseZaiUsage(ZAI_GLM_PROVIDER, ZAI_PAYLOAD, NOW);
+	assert.equal(renderUsageBar(usage, plainTheme), "zai 5h ▱▱▱▱▱▱▱▱ 5% · week 6%");
+
+	const hot = parseZaiUsage(
+		ZAI_PROVIDER,
+		{
+			data: {
+				limits: [
+					{ type: "TOKENS_LIMIT", unit: 3, percentage: 85, nextResetTime: NOW + 3_600_000 },
+					{ type: "TOKENS_LIMIT", unit: 6, percentage: 42, nextResetTime: NOW + 3_600_000 },
+				],
+			},
+		},
+		NOW,
+	);
+	assert.equal(renderUsageBar(hot, plainTheme), "zai 5h ▰▰▰▰▰▰▰▱ 85% · week 42%");
+});
+
+test("renderUsageBar stays quiet for windowless and reached-limit payloads", () => {
+	const empty = parseZaiUsage(ZAI_PROVIDER, { data: {} }, NOW);
+	assert.equal(renderUsageBar(empty, plainTheme), undefined);
 	const reached = parseZaiUsage(
 		ZAI_PROVIDER,
 		{
@@ -249,11 +305,71 @@ test("renderPlainLines flags a reached limit and explains a windowless payload",
 		},
 		NOW,
 	);
-	const lines = renderPlainLines(reached, NOW);
-	assert.equal(lines.at(-1), "limit reached — window must reset");
+	assert.equal(renderUsageBar(reached, plainTheme), "zai 5h ▰▰▰▰▰▰▰▰ 100%");
+});
 
-	const empty = parseZaiUsage(ZAI_PROVIDER, { data: {} }, NOW);
-	assert.deepEqual(renderPlainLines(empty, NOW).slice(1), [
-		"no usage windows in the quota payload",
+test("renderUsagePanel lays out rows exactly like gentle-pi's Subscriptions panel", () => {
+	const usage = parseZaiUsage(ZAI_GLM_PROVIDER, ZAI_PAYLOAD, NOW);
+	const lines = renderUsagePanel([usage], plainTheme, 64, NOW, { provider: ZAI_GLM_PROVIDER });
+	assert.deepEqual(lines, [
+		"✿ zai-glm · max · updated just now",
+		"  zai",
+		`    5h    ▰${"▱".repeat(15)}   5%  resets now`,
+		`    week  ▰${"▱".repeat(15)}   6%  resets in 4d 12h`,
 	]);
+
+	const later = renderUsagePanel([usage], plainTheme, 64, NOW + 3 * 60_000, { provider: ZAI_GLM_PROVIDER });
+	assert.equal(later[0], "✿ zai-glm · max · updated 3m ago");
+});
+
+test("renderUsagePanel explains a dataless active provider and stays quiet without one", () => {
+	assert.deepEqual(renderUsagePanel([], plainTheme, 64, NOW, { provider: ZAI_PROVIDER }), [
+		`✿ zai · ${ZAI_PENDING_NOTE}`,
+	]);
+	assert.deepEqual(renderUsagePanel([], plainTheme, 120, NOW), [USAGE_EMPTY_MESSAGE]);
+});
+
+test("ZaiUsageView frames the panel and answers r/esc/q like /gentle:usage", async () => {
+	const usage = parseZaiUsage(ZAI_GLM_PROVIDER, ZAI_PAYLOAD, NOW);
+	let closed = 0;
+	let refreshes = 0;
+	let release: () => void = () => {};
+	const pending = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	const view = new ZaiUsageView({
+		theme: plainTheme,
+		now: () => NOW,
+		usage: () => usage as ProviderUsage,
+		active: () => ({ provider: ZAI_GLM_PROVIDER }),
+		onRefresh: () => {
+			refreshes += 1;
+			return pending;
+		},
+		onClose: () => {
+			closed += 1;
+		},
+		requestRender: () => {},
+	});
+
+	const lines = view.render(64);
+	assert.equal(lines.length, 7, "top + 4 rows + keys + bottom");
+	assert.equal(lines[0], `╭─ ✿ Subscriptions ${"─".repeat(44)}╮`);
+	assert.equal(lines[1], `│ ✿ zai-glm · max · updated just now${" ".repeat(26)} │`);
+	assert.equal(lines.at(-2), `│ r refresh   esc close${" ".repeat(39)} │`);
+	assert.equal(lines.at(-1), `╰${"─".repeat(62)}╯`);
+
+	view.handleInput("r");
+	assert.equal(refreshes, 1);
+	assert.match(view.render(64)[0] ?? "", /refreshing…/);
+	view.handleInput("r");
+	assert.equal(refreshes, 1, "a refresh in flight swallows the next r");
+	release();
+	await pending.then(() => {});
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	assert.doesNotMatch(view.render(64)[0] ?? "", /refreshing…/);
+
+	view.handleInput("\x1b");
+	view.handleInput("q");
+	assert.equal(closed, 2, "esc and q both close");
 });

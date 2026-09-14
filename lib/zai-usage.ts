@@ -150,53 +150,137 @@ export async function fetchZaiUsage(
 }
 
 // ---------------------------------------------------------------------------
-// Widget rendering — the standalone replacement for gentle-pi's shell bar.
+// Rendering — ported from gentle-pi's lib/shell-usage.ts + lib/shell-gauge.ts
+// so the standalone meter paints exactly what the Gentle Shell bar and the
+// Subscriptions panel paint for Codex/Claude: one compact bar segment (first
+// window gauged, the rest compact) and one detailed panel row per window.
 // ---------------------------------------------------------------------------
 
-/** Minimal color surface pi's ctx.ui.theme provides; kept structural for tests. */
+/** Color surface pi's ctx.ui.theme provides; kept structural for tests. */
 export interface UsageTheme {
-	fg(color: UsageColor, text: string): string;
-}
-export type UsageColor = "label" | "percent" | "separator" | "warn" | "muted";
-
-export function paintGauge(percent: number, cells: number): string {
-	const filled = Math.round((Math.min(100, Math.max(0, percent)) / 100) * cells);
-	return `${"▰".repeat(filled)}${"▱".repeat(Math.max(0, cells - filled))}`;
+	fg(color: string, text: string): string;
 }
 
-/** One widget line per usage window: `z.ai max 5h ▰▰▱▱▱▱▱▱ 42% · resets in 2h 13m`. */
-export function renderWidgetLines(
-	usage: ProviderUsage,
-	theme: UsageTheme,
-	now: number,
-): string[] {
-	const head = theme.fg("label", `z.ai${usage.plan ? ` ${usage.plan}` : ""}`);
+// Theme roles gentle-pi paints usage with; keys are pi theme colors.
+const ROLE = {
+	PROVIDER: "text",
+	PLAN: "muted",
+	LIMIT: "customMessageLabel",
+	LABEL: "muted",
+	PERCENT: "text",
+	RESET: "dim",
+	SEPARATOR: "muted",
+} as const;
+
+export const BAR_METER_CELLS = 8;
+export const PANEL_METER_CELLS = 16;
+const GAUGE_FILLED = "▰";
+const GAUGE_EMPTY = "▱";
+const GAUGE_EMPTY_ROLE = "border";
+export const WARNING_THRESHOLD = 80;
+export const ERROR_THRESHOLD = 95;
+
+export function renderGauge(percent: number, cells: number = BAR_METER_CELLS): string {
+	const clamped = Math.max(0, Math.min(100, percent));
+	const filled = Math.round((clamped / 100) * cells);
+	return GAUGE_FILLED.repeat(filled) + GAUGE_EMPTY.repeat(cells - filled);
+}
+
+export type GaugeTone = "accent" | "warning" | "error" | "dim";
+
+export function gaugeTone(percent: number): GaugeTone {
+	if (percent >= ERROR_THRESHOLD) return "error";
+	if (percent >= WARNING_THRESHOLD) return "warning";
+	return "accent";
+}
+
+export function paintGauge(percent: number, theme: UsageTheme, cells: number = BAR_METER_CELLS): string {
+	const gauge = renderGauge(percent, cells);
+	const filled = gauge.replace(new RegExp(`${GAUGE_EMPTY}+$`), "");
+	return theme.fg(gaugeTone(percent), filled) + theme.fg(GAUGE_EMPTY_ROLE, gauge.slice(filled.length));
+}
+
+/** The Gentle Shell bar segment: first window gauged, the rest compact. */
+export function renderUsageBar(usage: ProviderUsage, theme: UsageTheme): string | undefined {
 	const main = usage.limits[0];
-	if (!main)
-		return [head, theme.fg("muted", "no usage windows in the quota payload")];
-	const lines = main.windows.map((window) => {
-		const meter = theme.fg(
-			window.usedPercent >= 80 ? "warn" : "label",
-			paintGauge(window.usedPercent, 8),
-		);
-		const percent = theme.fg(
-			window.usedPercent >= 80 ? "warn" : "percent",
-			`${Math.round(window.usedPercent)}%`,
-		);
-		const reset =
-			window.resetAt === null
-				? ""
-				: ` ${theme.fg("muted", formatReset(window.resetAt, now))}`;
-		return `${head} ${theme.fg("label", window.label)} ${meter} ${percent}${reset}`;
-	});
-	if (main.limitReached)
-		lines.push(theme.fg("warn", "limit reached — window must reset"));
-	return lines;
+	const [first, ...rest] = main?.windows ?? [];
+	if (!first) return undefined;
+	const head = `${theme.fg(ROLE.LABEL, main.name)} ${theme.fg(ROLE.LABEL, first.label)} ${paintGauge(first.usedPercent, theme, BAR_METER_CELLS)} ${theme.fg(ROLE.PERCENT, `${Math.round(first.usedPercent)}%`)}`;
+	const tail = rest.map((window) => `${theme.fg(ROLE.SEPARATOR, "·")} ${theme.fg(ROLE.LABEL, window.label)} ${theme.fg(ROLE.PERCENT, `${Math.round(window.usedPercent)}%`)}`);
+	return [head, ...tail].join(" ");
 }
 
-/** Plain ANSI-free lines (tests and non-TUI fallbacks). */
-export function renderPlainLines(usage: ProviderUsage, now: number): string[] {
-	return renderWidgetLines(usage, plainTheme, now);
+function updatedAgo(fetchedAt: number, now: number): string {
+	const minutes = Math.floor((now - fetchedAt) / 60_000);
+	return minutes < 1 ? "updated just now" : `updated ${minutes}m ago`;
 }
 
-const plainTheme: UsageTheme = { fg: (_color, text) => text };
+export const ACTIVE_MARK = "✿";
+export const ZAI_PENDING_NOTE = "no usage yet · r to fetch";
+export const USAGE_EMPTY_MESSAGE = "No subscription usage yet. Usage arrives with the next response, or press r to fetch it.";
+
+const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
+
+/** Visible width of an ANSI-painted string; every glyph used is width 1. */
+export function visibleWidth(text: string): number {
+	return text.replace(ANSI_PATTERN, "").length;
+}
+
+/** Plain clip to a visible width with an ellipsis, ANSI sequences copied whole. */
+export function clipToWidth(text: string, max: number): string {
+	let clipped = "";
+	let width = 0;
+	let index = 0;
+	while (index < text.length) {
+		if (text[index] === "\x1b") {
+			const sequence = /^\x1b\[[0-9;]*m/.exec(text.slice(index));
+			if (sequence) {
+				clipped += sequence[0];
+				index += sequence[0].length;
+				continue;
+			}
+		}
+		const char = text[index] ?? "";
+		if (width + 1 > max - 1) break;
+		clipped += char;
+		width += 1;
+		index += 1;
+	}
+	return width < visibleWidth(text) ? `${clipped}…` : clipped;
+}
+
+export interface ActiveProvider {
+	provider: string;
+}
+
+export function zaiProviderNote(provider: string): string {
+	return isZaiUsageProvider(provider) ? ZAI_PENDING_NOTE : "no subscription usage for this provider";
+}
+
+// The active provider line leads with the petal and explains itself when it
+// has no data yet; every window then gets its own metered row.
+export function renderUsagePanel(usages: ProviderUsage[], theme: UsageTheme, width: number, now: number, active?: ActiveProvider): string[] {
+	const activeUsage = active ? usages.find((usage) => usage.provider === active.provider) : undefined;
+	const others = usages.filter((usage) => usage !== activeUsage);
+	if (!active && usages.length === 0) return [clipToWidth(USAGE_EMPTY_MESSAGE, width)];
+	const lines: string[] = [];
+	if (active && !activeUsage) {
+		lines.push(`${theme.fg(ROLE.LIMIT, ACTIVE_MARK)} ${theme.fg(ROLE.PROVIDER, active.provider)} ${theme.fg(ROLE.SEPARATOR, "·")} ${theme.fg(ROLE.RESET, zaiProviderNote(active.provider))}`);
+	}
+	for (const usage of [...(activeUsage ? [activeUsage] : []), ...others]) {
+		const mark = usage === activeUsage ? `${theme.fg(ROLE.LIMIT, ACTIVE_MARK)} ` : "";
+		const plan = usage.plan ? ` ${theme.fg(ROLE.SEPARATOR, "·")} ${theme.fg(ROLE.PLAN, usage.plan)}` : "";
+		lines.push(`${mark}${theme.fg(ROLE.PROVIDER, usage.provider)}${plan} ${theme.fg(ROLE.SEPARATOR, "·")} ${theme.fg(ROLE.RESET, updatedAgo(usage.fetchedAt, now))}`);
+		for (const limit of usage.limits) {
+			lines.push(`  ${theme.fg(ROLE.LIMIT, limit.name)}`);
+			for (const window of limit.windows) {
+				const percent = `${Math.round(window.usedPercent)}%`.padStart(4);
+				lines.push(`    ${theme.fg(ROLE.LABEL, window.label.padEnd(5))} ${paintGauge(window.usedPercent, theme, PANEL_METER_CELLS)} ${theme.fg(ROLE.PERCENT, percent)}  ${theme.fg(ROLE.RESET, formatReset(window.resetAt, now))}`);
+			}
+		}
+	}
+	return lines.map((line) => clipToWidth(line, width));
+}
+
+/** Plain ANSI-free theme (tests and non-TUI fallbacks). */
+export const plainTheme: UsageTheme = { fg: (_color, text) => text };
