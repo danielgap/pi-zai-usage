@@ -1,6 +1,6 @@
 {
 	"name": "pi-zai-usage",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Z.ai GLM Coding Plan usage meter for pi: a status-bar segment and a /zai:usage Subscriptions panel reading the z.ai quota endpoint.",
 	"license": "MIT",
 	"type": "module",
@@ -42,6 +42,8 @@
 		"typescript": "^5.9.3"
 	},
 	"pi": {
-		"extensions": ["./extensions"]
+		"extensions": [
+			"./extensions"
+		]
 	}
 }
