@@ -28,6 +28,7 @@ Coding against a metered plan fails quietly, not loudly:
 | Capability | What it does |
 | --- | --- |
 | **Status-bar segment** | The Gentle Shell bar segment: `zai 5h ▰▰▱▱▱▱▱▱ 42% · week 71%` — first window gauged, the rest compact — delivered through pi's public `ctx.ui.setStatus` contract |
+| **Sidebar usage block** | When gentle-pi's fullscreen sidebar is active, the `✿ zai · plan` block with per-window meters and resets is appended right below the Status card — the same sidebar that carries gentle-pi's native Codex/Claude usage — and the trailing status segment is cleared so the meter never shows twice |
 | **`/zai:usage` command** | Opens the `✿ Subscriptions` panel gentle-pi's `/gentle:usage` opens: 16-cell meters, reset countdowns, plan, `updated Xm ago`; `r` refetches, `esc` closes |
 | **`/zai:usage off` / `on`** | Hides or restores the status segment without uninstalling |
 | **Automatic refresh** | Polls every 5 minutes and after every response while a `zai` / `zai-glm` model is active |
@@ -54,12 +55,8 @@ Then restart pi, pick a Z.ai model (`zai` / `zai-glm` provider), and the meter a
 
 1. Have a Z.ai API key configured — the extension resolves it through pi's model registry (`getApiKeyForProvider`) and falls back to `ZAI_GLM_API_KEY` or `ZAI_API_KEY` in the environment.
 2. Switch to a Z.ai provider model (`/model`, or Ctrl+P cycling).
-3. The segment appears in the status bar — as the trailing segment of gentle-pi's bottom bar (and in the sidebar's Integrations group), or themed in pi's native footer when gentle-pi is not installed:
-
-```text
- zai 5h ▰▰▰▱▱▱▱▱ 34% · week 11%
- zai 5h ▰▰▰▱▱▱▱▱ 34% · week 11%
-```
+3. The meter appears:\n	- **Fullscreen sidebar (gentle-pi)**: the `✿ zai · plan` block sits directly below the Status card in the sidebar rail, next to where gentle-pi paints its native Codex/Claude usage.
+	- **Bottom bar / native footer**: the compact segment rides as the trailing status segment `zai 5h ▰▰▰▱▱▱▱▱ 34% · week 11%` — gentle-pi's bottom bar when the sidebar rail is not painting, or pi's native footer when gentle-pi is not installed.
 
 4. `/zai:usage` opens the subscriptions panel (same frame and keys as gentle-pi's `/gentle:usage`):
 
@@ -97,6 +94,7 @@ This package is the decoupled home of the usage meter while the official gentle-
 
 - `lib/zai-usage.ts` is lifted verbatim from gentle-pi's `lib/shell-usage.ts` (branch `feat/zai-usage-meter`), including its parser tests. When gentle-pi ships the official integration, both stay in sync by shared provenance, and this package retires.
 - The rendering is a port, not a lookalike: the status paints `renderUsageBar`'s exact bar segment (8-cell gauge with accent/warning/error tones and border-dimmed empty cells) and `lib/zai-usage-view.ts` ports gentle-pi's `UsageView` frame — same `✿ Subscriptions` title, same 16-cell panel meters, same `r refresh · esc close` keys — through pi's public `setStatus`/`ui.custom` contracts only. gentle-pi is never read or patched: it renders the status through the same `getExtensionStatuses()` footer contract pi documents, so any gentle-pi update keeps this working. No pi-tui dependency, no forked UI.
+- The fullscreen sidebar block (`lib/zai-rail.ts`) decorates the one cross-module surface gentle-pi itself shares: the terminal-owned rail state published under `Symbol.for("gentle-pi.experimental-sidebar.state")`. The `footer` part (the Status card) is wrapped in place — the card renders unchanged and the usage block is appended below it — and the wrap re-establishes itself if gentle-pi re-registers the part. When the symbol, the part, or the expected shapes are missing (gentle-pi absent, older, or refactored), the decorator reports inactive and the trailing status segment carries the meter. gentle-pi files are still never read or patched.
 
 ## Releasing
 
