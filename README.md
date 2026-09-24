@@ -3,12 +3,12 @@
 [![pi package](https://img.shields.io/badge/Pi-package-6f42c1)](https://github.com/danielgap/pi-zai-usage)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/danielgap/pi-zai-usage?style=flat&color=yellow)](https://github.com/danielgap/pi-zai-usage/stargazers)
-[![tests](https://img.shields.io/badge/tests-15%2F15-brightgreen)](#development)
+[![tests](https://img.shields.io/badge/tests-22%2F22-brightgreen)](#development)
 [![parser provenance](https://img.shields.io/badge/parser-gentle--pi%20branch-ff69b4)](#relationship-to-gentle-pi)
 
 **Meter your Z.ai GLM Coding Plan usage in pi, without guessing when the window resets.**
 
-`pi-zai-usage` adds a usage meter for the Z.ai GLM Coding Plan to [pi](https://shittycodingagent.ai): a status-bar segment with the 5-hour and weekly token windows, a `/zai:usage` command that opens the `✿ Subscriptions` panel, and automatic refresh — every 5 minutes and after each response — while a Z.ai provider is active.
+`pi-zai-usage` adds a usage meter for the Z.ai GLM Coding Plan to [pi](https://shittycodingagent.ai). When Gentle Shell (gentle-pi) is installed, the meter travels through its official third-party usage-source event into the shell's native usage surfaces, exactly like its built-in Codex/Claude sources. Everywhere else the standalone fallback carries it: a status-bar segment with the 5-hour and weekly token windows, a `/zai:usage` command that opens the `✿ Subscriptions` panel, and automatic refresh — every 5 minutes and after each response — while a Z.ai provider is active.
 
 Z.ai meters the GLM Coding Plan through an undocumented quota endpoint. This package turns that endpoint into visible windows — plan level, used percentage per window, and when each one resets — and stays out of your way the moment you switch to another provider.
 
@@ -27,10 +27,10 @@ Coding against a metered plan fails quietly, not loudly:
 
 | Capability | What it does |
 | --- | --- |
-| **Status-bar segment** | The Gentle Shell bar segment: `zai 5h ▰▰▱▱▱▱▱▱ 42% · week 71%` — first window gauged, the rest compact — delivered through pi's public `ctx.ui.setStatus` contract |
-| **Sidebar usage block** | When gentle-pi's fullscreen sidebar is active, the `✿ zai · plan` block with per-window meters and resets is appended right below the Status card — the same sidebar that carries gentle-pi's native Codex/Claude usage — and the trailing status segment is cleared so the meter never shows twice |
+| **Native Gentle Shell usage** | Registers **both** `zai` and `zai-glm` as usage sources through gentle-pi's official `gentle-pi:usage-source/v1` event at `session_start`, so the shell's native usage store meters Z.ai like its own Codex/Claude sources — its refresh cadence (5 minutes, after each response, forced once on registration when a Z.ai model is active) and its `/gentle:usage` panel |
+| **Status-bar segment (standalone fallback)** | `zai 5h ▰▰▱▱▱▱▱▱ 42% · week 71%` — first window gauged, the rest compact — delivered through pi's public `ctx.ui.setStatus` contract: trailing segment of gentle-pi's narrow footer, a line in its sidebar Integrations group, or pi's native footer without gentle-pi |
 | **`/zai:usage` command** | Opens the `✿ Subscriptions` panel gentle-pi's `/gentle:usage` opens: 16-cell meters, reset countdowns, plan, `updated Xm ago`; `r` refetches, `esc` closes |
-| **`/zai:usage off` / `on`** | Hides or restores the status segment without uninstalling |
+| **`/zai:usage off` / `on`** | Hides or restores the standalone status segment — never the native usage Gentle Shell already recorded from the event |
 | **Automatic refresh** | Polls every 5 minutes and after every response while a `zai` / `zai-glm` model is active |
 | **Provider-aware lifecycle** | The status appears on Z.ai providers and clears itself when you switch away |
 | **Defensive parsing** | Unknown payload shapes degrade to empty limits; percentages clamp to 0-100; a hung request times out in 10s |
@@ -55,8 +55,10 @@ Then restart pi, pick a Z.ai model (`zai` / `zai-glm` provider), and the meter a
 
 1. Have a Z.ai API key configured — the extension resolves it through pi's model registry (`getApiKeyForProvider`) and falls back to `ZAI_GLM_API_KEY` or `ZAI_API_KEY` in the environment.
 2. Switch to a Z.ai provider model (`/model`, or Ctrl+P cycling).
-3. The meter appears:\n	- **Fullscreen sidebar (gentle-pi)**: the `✿ zai · plan` block sits directly below the Status card in the sidebar rail, next to where gentle-pi paints its native Codex/Claude usage.
-	- **Bottom bar / native footer**: the compact segment rides as the trailing status segment `zai 5h ▰▰▰▱▱▱▱▱ 34% · week 11%` — gentle-pi's bottom bar when the sidebar rail is not painting, or pi's native footer when gentle-pi is not installed.
+3. The meter appears:
+	- **Gentle Shell installed**: Z.ai rides the shell's native usage surfaces — the same store, header, and `/gentle:usage` panel its built-in Codex/Claude sources feed. Registration is load-order independent (the shell subscribes before any `session_start` fires) and forces one refresh when a Z.ai model is already active, so the first windows show up without waiting for the shell's 5-minute cycle.
+	- **No gentle-pi**: the compact segment `zai 5h ▰▰▰▱▱▱▱▱ 34% · week 11%` rides pi's native footer as the trailing status segment.
+	- **Both worlds**: event delivery has no acknowledgement, so the extension cannot tell whether gentle-pi consumed the registration — the standalone segment keeps rendering (in gentle-pi's footer or its sidebar Integrations group). `/zai:usage off` hides that segment only.
 
 4. `/zai:usage` opens the subscriptions panel (same frame and keys as gentle-pi's `/gentle:usage`):
 
@@ -75,7 +77,7 @@ Then restart pi, pick a Z.ai model (`zai` / `zai-glm` provider), and the meter a
 | Command | Effect |
 | --- | --- |
 | `/zai:usage` | Force-refresh and open the `✿ Subscriptions` panel (a failed quota request is announced; in RPC mode the windows are notified as plain lines) |
-| `/zai:usage off` | Hide the status segment |
+| `/zai:usage off` | Hide the **standalone** status segment only — the native usage Gentle Shell already recorded from the event is untouched |
 | `/zai:usage on` | Restore the status segment and refresh |
 
 ## How the meter reads the endpoint
@@ -90,11 +92,12 @@ The quota endpoint (`https://api.z.ai/api/monitor/usage/quota/limit`) is undocum
 
 ## Relationship to gentle-pi
 
-This package is the decoupled home of the usage meter while the official gentle-pi integration waits on its upstream issue. Keeping a feature branch alive against a fast-moving main is its own tax; a standalone extension meters the same quota today, with the same code the integration would ship.
+Gentle Shell's official third-party usage-source event is the native path, and this package registers on it while keeping a standalone meter that works with or without the shell.
 
-- `lib/zai-usage.ts` is lifted verbatim from gentle-pi's `lib/shell-usage.ts` (branch `feat/zai-usage-meter`), including its parser tests. When gentle-pi ships the official integration, both stay in sync by shared provenance, and this package retires.
-- The rendering is a port, not a lookalike: the status paints `renderUsageBar`'s exact bar segment (8-cell gauge with accent/warning/error tones and border-dimmed empty cells) and `lib/zai-usage-view.ts` ports gentle-pi's `UsageView` frame — same `✿ Subscriptions` title, same 16-cell panel meters, same `r refresh · esc close` keys — through pi's public `setStatus`/`ui.custom` contracts only. gentle-pi is never read or patched: it renders the status through the same `getExtensionStatuses()` footer contract pi documents, so any gentle-pi update keeps this working. No pi-tui dependency, no forked UI.
-- The fullscreen sidebar block (`lib/zai-rail.ts`) decorates the one cross-module surface gentle-pi itself shares: the terminal-owned rail state published under `Symbol.for("gentle-pi.experimental-sidebar.state")`. The `footer` part (the Status card) is wrapped in place — the card renders unchanged and the usage block is appended below it — and the wrap re-establishes itself if gentle-pi re-registers the part. When the symbol, the part, or the expected shapes are missing (gentle-pi absent, older, or refactored), the decorator reports inactive and the trailing status segment carries the meter. gentle-pi files are still never read or patched.
+- `lib/zai-usage.ts` is lifted verbatim from gentle-pi's `lib/shell-usage.ts` (branch `feat/zai-usage-meter`), including its parser tests. The standalone parser and the shell's own stay in sync by shared provenance.
+- The rendering is a port, not a lookalike: the status paints `renderUsageBar`'s exact bar segment (8-cell gauge with accent/warning/error tones and border-dimmed empty cells) and `lib/zai-usage-view.ts` ports gentle-pi's `UsageView` frame — same `✿ Subscriptions` title, same 16-cell panel meters, same `r refresh · esc close` keys — through pi's public `setStatus`/`ui.custom` contracts only. No pi-tui dependency, no forked UI.
+- The native integration is gentle-pi's documented door: the shell emits nothing, it listens. It subscribes to `gentle-pi:usage-source/v1` (payload schema `gentle-pi.usage-source/v1`) when its extension factory runs — before any `session_start` fires, so registration from this side is load-order independent. The shell validates the payload field by field, replaces the previous source per provider instead of accumulating, resolves the provider-specific API key from pi's model registry and supplies it to the source, and falls back to nothing: this package's own environment fallback (`ZAI_GLM_API_KEY` / `ZAI_API_KEY`) covers consumers that pass no key. No gentle-pi file is read, imported, or patched.
+- The earlier experimental sidebar decoration is gone on purpose: it wrapped an undocumented shared-state symbol (`gentle-pi.experimental-sidebar.state`), exactly the kind of surface a shell update could silently break. The usage-source event is the supported contract for the same job.
 
 ## Releasing
 
@@ -121,7 +124,7 @@ pnpm test        # node --test over the parser, fetch, and rendering (no network
 pnpm typecheck   # tsc --noEmit against @earendil-works/pi-coding-agent types
 ```
 
-The parser and renderer are pure; tests cover the documented payload shape, the legacy `CREDIT_LIMIT` plans, hostile inputs (wrong units, string percentages, over-range values, `null` entries), the fetch contract (bearer key, timeout, no key → no request), the gauge tones, the bar segment, the panel rows, and the overlay view's `r`/`esc` handling.
+The parser and renderer are pure; tests cover the documented payload shape, the legacy `CREDIT_LIMIT` plans, hostile inputs (wrong units, string percentages, over-range values, `null` entries), the fetch contract (bearer key, timeout, no key → no request), the gauge tones, the bar segment, the panel rows, the overlay view's `r`/`esc` handling, and the usage-source registration (both providers on the shell's event channel, consumer-supplied key preferred with environment fallback, nothing sent without a key). No test touches the network.
 
 ## Principles
 

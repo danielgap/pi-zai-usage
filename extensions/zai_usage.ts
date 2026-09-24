@@ -1,23 +1,21 @@
 // pi-zai-usage — Z.ai GLM Coding Plan usage meter as a Pi extension.
 //
-// Decoupled from gentle-pi on purpose: while the official gentle-pi
-// integration waits on its issue (gentle-pi#687), this extension meters the
-// same quota endpoint with the same battle-tested parser (lib/zai-usage.ts,
-// lifted from gentle-pi's shell-usage). When gentle-pi ships the official
-// integration, retire this package.
-//
 // Surfaces, without patching gentle-pi:
-// 1. Fullscreen sidebar rail: when gentle-pi's terminal-owned sidebar state is
-//    present, the "footer" part (the Status card) is wrapped in place and the
-//    z.ai usage block is appended right below it — the same sidebar that
-//    carries gentle-pi's native Codex/Claude usage. The decorator only touches
-//    the documented shared-state symbol; if gentle-pi is absent or refactored,
-//    it reports inactive and the fallback surface carries the meter.
-// 2. Fallback: the bar segment travels through pi's public ctx.ui.setStatus
-//    contract — gentle-pi's footer renders it as the trailing segment of its
-//    narrow status bar and in the sidebar's Integrations group. While the rail
-//    decoration is painting, the setStatus segment is cleared so the meter
-//    never shows twice.
+// 1. Native Gentle Shell usage: gentle-pi documents a third-party usage-source
+//    event ("gentle-pi:usage-source/v1", payload schema
+//    "gentle-pi.usage-source/v1"). Both z.ai providers are registered on it
+//    from session_start — not only the active one — so the shell's native
+//    usage store meters z.ai exactly like its built-in Codex/Claude sources.
+//    gentle-shell subscribes when its extension factory runs, before any
+//    session_start fires, so this registration is load-order independent; it
+//    resolves the provider-specific API key itself and hands it to the source,
+//    which falls back to the environment when the consumer supplies none.
+// 2. Standalone fallback: the bar segment travels through pi's public
+//    ctx.ui.setStatus contract — gentle-pi's footer renders it as the trailing
+//    segment of its narrow status bar and in the sidebar's Integrations group,
+//    and pi's native footer renders it when gentle-pi is absent. Event
+//    delivery has no acknowledgement, so the extension cannot know whether
+//    gentle-pi consumed the registration: the standalone segment stays.
 // 3. /zai:usage opens the framed ✿ Subscriptions panel /gentle:usage opens.
 import type {
 	ExtensionAPI,
@@ -28,19 +26,46 @@ import {
 	isZaiUsageProvider,
 	plainTheme,
 	renderUsageBar,
-	renderUsagePanel,
 	type UsageTheme,
+	ZAI_PENDING_NOTE,
+	ZAI_USAGE_PROVIDERS,
 } from "../lib/zai-usage.ts";
-import { wrapFooterRail, type RailWrap } from "../lib/zai-rail.ts";
 import { ZaiUsageView } from "../lib/zai-usage-view.ts";
 
 const STATUS_KEY = "zai-usage";
-const RAIL_WIDGET_KEY = "zai-usage-rail";
 const REFRESH_MS = 5 * 60_000;
-// gentle-pi registers its footer rail part from inside its own session_start
-// wiring, which may run after this extension's; a few idempotent retries (plus
-// an ensure() on every later refresh) close the race without coupling.
-const RAIL_ENSURE_DELAYS_MS = [0, 250, 1_000, 3_000, 8_000] as const;
+
+// gentle-pi's third-party usage-source contract (lib/shell-usage.ts). The
+// versioned constants are mirrored verbatim: the payload crosses the event
+// bus, where gentle-shell validates the shape and ignores anything else.
+export const USAGE_SOURCE_EVENT = "gentle-pi:usage-source/v1";
+export const USAGE_SOURCE_SCHEMA = "gentle-pi.usage-source/v1";
+
+/** The slice of pi's EventBus the usage-source registration needs. */
+export interface UsageSourceBus {
+	emit(channel: string, payload: unknown): void;
+}
+
+// Register both z.ai providers as gentle-shell usage sources. The shell only
+// fetches the source of the *active* provider, but knowing both up front means
+// switching models later finds the source already registered. Re-registration
+// replaces the previous source per provider, so a repeated session_start is a
+// no-op in effect, not an accumulation. Nothing here fetches or touches the
+// network: the shell decides when (and for which provider) to call fetch.
+export function registerUsageSources(bus: UsageSourceBus): void {
+	for (const provider of ZAI_USAGE_PROVIDERS) {
+		bus.emit(USAGE_SOURCE_EVENT, {
+			schema: USAGE_SOURCE_SCHEMA,
+			provider,
+			pendingNote: ZAI_PENDING_NOTE,
+			// The consumer resolves the provider-specific key from pi's model
+			// registry and supplies it here; the environment is only the fallback
+			// for consumers that pass no key.
+			fetch: (apiKey: string | undefined, fetchFn: typeof fetch, now: number) =>
+				fetchZaiUsage(provider, apiKey ?? apiKeyFromEnv(), fetchFn, now),
+		});
+	}
+}
 
 function bindTheme(ctx: ExtensionContext): UsageTheme {
 	const theme = (ctx.ui as { theme?: { fg(color: string, text: string): string } })
@@ -65,10 +90,6 @@ export default function zaiUsageExtension(pi: ExtensionAPI): void {
 	let fetchedAt = 0;
 	let hidden = false;
 	let timer: ReturnType<typeof setInterval> | undefined;
-	let rail: RailWrap | undefined;
-	let railTheme: UsageTheme | undefined;
-	let retryTimers: ReturnType<typeof setTimeout>[] = [];
-	let lastCtx: ExtensionContext | undefined;
 
 	const providerOf = (ctx: ExtensionContext): string | undefined =>
 		ctx.model?.provider;
@@ -86,88 +107,10 @@ export default function zaiUsageExtension(pi: ExtensionAPI): void {
 	function paint(ctx: ExtensionContext): void {
 		if (!ctx.hasUI) return;
 		const ui = ctx.ui as { setStatus(key: string, text: string | undefined): void };
-		void rail?.ensure();
-		// While the sidebar rail is painting our block, the trailing status
-		// segment is cleared so the meter never appears twice.
-		const bar = rail?.painting()
-			? undefined
-			: hidden || !current
-				? undefined
-				: renderUsageBar(current, bindTheme(ctx));
-		ui.setStatus(STATUS_KEY, bar);
-		rail?.requestRender();
-	}
-
-	// The rail block is the ✿ Subscriptions panel content: active provider,
-	// plan, updated-ago note and one metered row per window.
-	function railLines(width: number): string[] {
-		if (!current || hidden) return [];
-		return renderUsagePanel(
-			[current],
-			railTheme ?? plainTheme,
-			width,
-			Date.now(),
-			{ provider: current.provider },
+		ui.setStatus(
+			STATUS_KEY,
+			hidden || !current ? undefined : renderUsageBar(current, bindTheme(ctx)),
 		);
-	}
-
-	// gentle-pi's sidebar state lives on the terminal and is shared through a
-	// well-known symbol; the widget factory is the public hook that hands us
-	// the TUI (and its theme) without opening an overlay.
-	function captureRail(ctx: ExtensionContext): void {
-		if (!ctx.hasUI || rail) return;
-		const ui = ctx.ui as {
-			setWidget(
-				key: string,
-				content:
-					| string[]
-					| ((
-							tui: unknown,
-							theme: { fg(color: string, text: string): string },
-					  ) => { render(width: number): string[]; invalidate?(): void }),
-				options?: unknown,
-			): void;
-		};
-		try {
-			ui.setWidget(RAIL_WIDGET_KEY, (tui, theme) => {
-				if (!rail) {
-					railTheme = { fg: (color, text) => theme.fg(color, text) };
-					const terminal = (tui as { terminal?: unknown }).terminal;
-					const requestRender = () =>
-						void (tui as { requestRender?: () => void }).requestRender?.();
-					rail = wrapFooterRail(terminal, requestRender, {
-						lines: railLines,
-						digest: () =>
-							JSON.stringify([
-								current?.fetchedAt ?? 0,
-								current?.limits.map((limit) =>
-									limit.windows.map((window) => [window.label, window.usedPercent, window.resetAt]),
-								) ?? null,
-								hidden,
-							]),
-					});
-					scheduleRailEnsure();
-				}
-				return { render: () => [] };
-			});
-		} catch {
-			// The widget surface is optional; the fallback segment still works.
-		}
-	}
-
-	function scheduleRailEnsure(): void {
-		for (const delay of RAIL_ENSURE_DELAYS_MS) {
-			retryTimers.push(
-				setTimeout(() => {
-					// A successful late wrap must also repaint the status segment:
-					// otherwise the fallback line in Integrations lingers until the
-					// next refresh even though the rail now carries the meter.
-					void rail?.ensure();
-					rail?.requestRender();
-					if (lastCtx) paint(lastCtx);
-				}, delay),
-			);
-		}
 	}
 
 	async function refresh(
@@ -202,11 +145,6 @@ export default function zaiUsageExtension(pi: ExtensionAPI): void {
 		timer = undefined;
 	}
 
-	function stopRetries(): void {
-		for (const handle of retryTimers) clearTimeout(handle);
-		retryTimers = [];
-	}
-
 	function follow(ctx: ExtensionContext): void {
 		stopTimer();
 		if (!isZaiUsageProvider(providerOf(ctx) ?? "")) {
@@ -217,8 +155,11 @@ export default function zaiUsageExtension(pi: ExtensionAPI): void {
 	}
 
 	pi.on("session_start", async (_event, ctx) => {
-		lastCtx = ctx;
-		captureRail(ctx);
+		// Both providers, every session: gentle-shell listens from its factory
+		// (before any session_start) and replaces per provider, so this is
+		// load-order independent and idempotent. Registering only the active
+		// provider would leave the shell blind after a model switch.
+		registerUsageSources(pi.events);
 		if (providerOf(ctx) && isZaiUsageProvider(providerOf(ctx) ?? "")) {
 			await refresh(ctx, true);
 			follow(ctx);
@@ -226,7 +167,6 @@ export default function zaiUsageExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("model_select", async (_event, ctx) => {
-		lastCtx = ctx;
 		current = undefined;
 		fetchedAt = 0;
 		await refresh(ctx, true);
@@ -236,14 +176,11 @@ export default function zaiUsageExtension(pi: ExtensionAPI): void {
 	// gentle-pi refreshes its usage segment after every response; z.ai sends
 	// no usage headers, so the same background refresh keeps the bar honest.
 	pi.on("agent_end", (_event, ctx) => {
-		lastCtx = ctx;
-		captureRail(ctx);
 		void refresh(ctx, false);
 	});
 
 	pi.on("session_shutdown", () => {
 		stopTimer();
-		stopRetries();
 	});
 
 	pi.registerCommand("zai:usage", {
@@ -251,6 +188,8 @@ export default function zaiUsageExtension(pi: ExtensionAPI): void {
 		handler: async (args, ctx) => {
 			const arg = (args ?? "").trim().toLowerCase();
 			if (arg === "off") {
+				// Standalone-only: this hides the setStatus segment, never the
+				// native usage gentle-shell already records from the event.
 				hidden = true;
 				paint(ctx);
 				ctx.ui.notify("z.ai usage status hidden", "info");
