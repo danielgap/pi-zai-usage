@@ -13,14 +13,14 @@ Delivery: ask-on-risk; forecast under 150 authored changed lines. Branch: `feat/
 ## Tasks
 
 - [x] T1 — Rename npm identity and make release workflow refer to the scoped package. Route: delegated writer (multi-file manifest/workflow edit). Check: `pnpm test` 22/22, `pnpm typecheck` clean, pack identity `@danielgap/gentle-shell-zai-usage@0.4.1`, workflow YAML parses; reviewed approved and acknowledged (lineage `review-9eac319eddf9bb5b`). Commit: `db6e5c2`.
-- [ ] T2 — Update README install/release guidance, clarify Gentle Shell-first behavior with fallback, and link Built with Gentle AI. Route: inline doc edit. Check: links/install instructions agree with manifest and release workflow; focused readback. Commit: pending.
+- [x] T2 — Update README install/release guidance, clarify Gentle Shell-first behavior with fallback, and link Built with Gentle AI. Route: inline doc edit. Check: independent verifier confirmed package/install/workflow consistency and link anchor; `pnpm test` 22/22, `pnpm typecheck` clean, `npm pack --dry-run --json` correct, `git diff --check` clean. Commit: `b810f35`. Native ASSESS was unassessable (schema-incompatible), so an independent verifier was used; trivial passive documentation-only edit was not sent for separate native review.
 
 ## Progress and evidence
 
 - Name selected explicitly by user; registry lookup returned not found for the new scoped name; npm account locally reports `danielgap`. Scope availability is not a reservation.
-- T1 committed at `db6e5c2` and native review acknowledged; T2 in progress. No push, tag, or publication. Release-review suggestions about publish access and registry propagation remain informational for a future release.
+- T1 committed at `db6e5c2` and native review acknowledged; T2 committed at `b810f35` and independently verified. No push, tag, or publication. Release-review suggestions about publish access and registry propagation remain informational for a future release.
 - Engram mirror pending: this Pi session is bound to the parent `gentleman` project, and a write to `pi-zai-usage` was rejected. Preserve this local recovery copy until a Pi session rooted in the target project can mirror it.
 
 ## Next step
 
-Complete T2 and its checks/commit. Do not publish without separate authorization.
+Work complete locally. Next: confirm the GitHub Actions `NPM_TOKEN` has publish rights for the new scoped name; decide whether to push the feature branch and prepare a `v0.4.1` release. Do not publish without separate authorization.
