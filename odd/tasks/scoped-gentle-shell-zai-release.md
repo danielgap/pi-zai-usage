@@ -12,15 +12,15 @@ Delivery: ask-on-risk; forecast under 150 authored changed lines. Branch: `feat/
 
 ## Tasks
 
-- [ ] T1 — Rename npm identity and make release workflow refer to the scoped package. Route: delegated writer (multi-file manifest/workflow/lockfile edit). Check: pack metadata and workflow references match `@danielgap/gentle-shell-zai-usage@0.4.1`; `pnpm test`, `pnpm typecheck`. Commit: pending.
-- [ ] T2 — Update README install/release guidance, clarify Gentle Shell-first behavior with fallback, and link Built with Gentle AI. Route: inline mechanical doc edit or delegated if scope expands. Check: links/install instructions agree with manifest and release workflow; focused readback. Commit: pending.
+- [x] T1 — Rename npm identity and make release workflow refer to the scoped package. Route: delegated writer (multi-file manifest/workflow edit). Check: `pnpm test` 22/22, `pnpm typecheck` clean, pack identity `@danielgap/gentle-shell-zai-usage@0.4.1`, workflow YAML parses; reviewed approved and acknowledged (lineage `review-9eac319eddf9bb5b`). Commit: `db6e5c2`.
+- [ ] T2 — Update README install/release guidance, clarify Gentle Shell-first behavior with fallback, and link Built with Gentle AI. Route: inline doc edit. Check: links/install instructions agree with manifest and release workflow; focused readback. Commit: pending.
 
 ## Progress and evidence
 
 - Name selected explicitly by user; registry lookup returned not found for the new scoped name; npm account locally reports `danielgap`. Scope availability is not a reservation.
-- First task in progress. No source edits or release delivery yet.
+- T1 committed at `db6e5c2` and native review acknowledged; T2 in progress. No push, tag, or publication. Release-review suggestions about publish access and registry propagation remain informational for a future release.
 - Engram mirror pending: this Pi session is bound to the parent `gentleman` project, and a write to `pi-zai-usage` was rejected. Preserve this local recovery copy until a Pi session rooted in the target project can mirror it.
 
 ## Next step
 
-Delegate T1 with bounded edit surfaces, verify and commit it; then complete T2 and its checks/commit. Do not publish without separate authorization.
+Complete T2 and its checks/commit. Do not publish without separate authorization.

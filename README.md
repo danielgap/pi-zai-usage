@@ -1,4 +1,4 @@
-# pi-zai-usage
+# Gentle Shell Z.ai usage
 
 [![pi package](https://img.shields.io/badge/Pi-package-6f42c1)](https://github.com/danielgap/pi-zai-usage)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -8,7 +8,7 @@
 
 **Meter your Z.ai GLM Coding Plan usage in pi, without guessing when the window resets.**
 
-`pi-zai-usage` adds a usage meter for the Z.ai GLM Coding Plan to [pi](https://shittycodingagent.ai). When Gentle Shell (gentle-pi) is installed, the meter travels through its official third-party usage-source event into the shell's native usage surfaces, exactly like its built-in Codex/Claude sources. Everywhere else the standalone fallback carries it: a status-bar segment with the 5-hour and weekly token windows, a `/zai:usage` command that opens the `✿ Subscriptions` panel, and automatic refresh — every 5 minutes and after each response — while a Z.ai provider is active.
+`@danielgap/gentle-shell-zai-usage` adds a usage meter for the Z.ai GLM Coding Plan to [pi](https://shittycodingagent.ai), designed for Gentle Shell (gentle-pi). With Gentle Shell installed, it registers Z.ai through the shell's official third-party usage-source event and feeds its native usage surfaces, just like built-in Codex/Claude sources. Without Gentle Shell, it still provides a standalone status-bar segment, a `/zai:usage` subscriptions panel, and automatic refresh while a Z.ai provider is active.
 
 Z.ai meters the GLM Coding Plan through an undocumented quota endpoint. This package turns that endpoint into visible windows — plan level, used percentage per window, and when each one resets — and stays out of your way the moment you switch to another provider.
 
@@ -21,7 +21,7 @@ Coding against a metered plan fails quietly, not loudly:
 - the quota endpoint is undocumented, so every meter is a reverse-engineered guess;
 - nothing in pi shows subscription usage for Z.ai providers.
 
-`pi-zai-usage` fixes the visibility. You bring the API key you already configured for the provider; it brings the parsing, the meter, and the discipline.
+This extension fixes the visibility. You bring the API key you already configured for the provider; it brings the parsing, the meter, and the discipline.
 
 ## What it adds
 
@@ -40,10 +40,10 @@ Coding against a metered plan fails quietly, not loudly:
 ## Install
 
 ```bash
-pi install npm:pi-zai-usage
+pi install npm:@danielgap/gentle-shell-zai-usage
 ```
 
-From a local checkout (before the npm release):
+From a local checkout (without npm):
 
 ```bash
 pi install /path/to/pi-zai-usage
@@ -99,22 +99,26 @@ Gentle Shell's official third-party usage-source event is the native path, and t
 - The native integration is gentle-pi's documented door: the shell emits nothing, it listens. It subscribes to `gentle-pi:usage-source/v1` (payload schema `gentle-pi.usage-source/v1`) when its extension factory runs — before any `session_start` fires, so registration from this side is load-order independent. The shell validates the payload field by field, replaces the previous source per provider instead of accumulating, resolves the provider-specific API key from pi's model registry and supplies it to the source, and falls back to nothing: this package's own environment fallback (`ZAI_GLM_API_KEY` / `ZAI_API_KEY`) covers consumers that pass no key. No gentle-pi file is read, imported, or patched.
 - The earlier experimental sidebar decoration is gone on purpose: it wrapped an undocumented shared-state symbol (`gentle-pi.experimental-sidebar.state`), exactly the kind of surface a shell update could silently break. The usage-source event is the supported contract for the same job.
 
+## Built with Gentle AI
+
+This extension was [built with Gentle AI](https://github.com/Gentleman-Programming/gentle-ai#built-with-gentle-ai).
+
 ## Releasing
 
 Releases publish automatically from version tags through [`.github/workflows/publish.yml`](.github/workflows/publish.yml):
 
-1. Bump `package.json` to the next version, commit, and push to `main`.
+1. Bump `package.json` to the next version, commit, and push to `main`. The old unscoped name `pi-zai-usage` belongs to another npm maintainer; publish only `@danielgap/gentle-shell-zai-usage`. The existing `v0.4.0` tag cannot be reused for the renamed package; the next release is `v0.4.1`.
 2. Tag the release on the freshly fetched `origin/main` commit — the workflow verifies the tag is annotated, matches `package.json`'s version, and points to a commit reachable from `main`:
 
    ```bash
    git fetch origin main --tags
-   git tag -a vX.Y.Z "$(git rev-parse 'origin/main^{commit}')" -m "pi-zai-usage vX.Y.Z"
+   git tag -a vX.Y.Z "$(git rev-parse 'origin/main^{commit}')" -m "@danielgap/gentle-shell-zai-usage vX.Y.Z"
    git push origin refs/tags/vX.Y.Z
    ```
 
 3. CI installs, tests, typechecks, packs, publishes to npm with provenance, creates the GitHub Release if it is missing, and verifies the registry.
 
-First-time setup: add an `NPM_TOKEN` secret (automation or granular token with publish rights for `pi-zai-usage`) under **Settings → Secrets and variables → Actions**. A run that failed for publication-only reasons can be retried without moving the tag: dispatch the workflow with the existing tag (`gh workflow run publish.yml -f tag=vX.Y.Z`).
+First-time setup: add an `NPM_TOKEN` secret with publish rights for `@danielgap/gentle-shell-zai-usage` under **Settings → Secrets and variables → Actions**. A token restricted to the old unscoped package will not work for this new name; update its permissions or replace the secret if needed. A run that failed for publication-only reasons can be retried without moving its tag (`gh workflow run publish.yml -f tag=vX.Y.Z`).
 
 ## Development
 
