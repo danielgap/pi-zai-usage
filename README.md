@@ -101,6 +101,8 @@ Gentle Shell's official third-party usage-source event is the native path, and t
 
 ## Built with Gentle AI
 
+[![Built with Gentle-AI](https://raw.githubusercontent.com/Gentleman-Programming/gentle-ai/main/docs/assets/brand/built-with-gentle-ai.png)](https://github.com/Gentleman-Programming/gentle-ai)
+
 This extension was [built with Gentle AI](https://github.com/Gentleman-Programming/gentle-ai#built-with-gentle-ai).
 
 ## Releasing
