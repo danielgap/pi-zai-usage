@@ -10,12 +10,20 @@
 //    session_start fires, so this registration is load-order independent; it
 //    resolves the provider-specific API key itself and hands it to the source,
 //    which falls back to the environment when the consumer supplies none.
+//    Every registration the shell accepts is acknowledged back on the bus
+//    (see the ack constants below); that ack is what retires surface 2.
 // 2. Standalone fallback: the bar segment travels through pi's public
 //    ctx.ui.setStatus contract — gentle-pi's footer renders it as the trailing
 //    segment of its narrow status bar and in the sidebar's Integrations group,
-//    and pi's native footer renders it when gentle-pi is absent. Event
-//    delivery has no acknowledgement, so the extension cannot know whether
-//    gentle-pi consumed the registration: the standalone segment stays.
+//    and pi's native footer renders it when gentle-pi is absent. Registration
+//    alone is fire-and-forget, but a shell that acknowledges the registration
+//    ("gentle-pi:usage-source-ack/v1") also says "I meter this provider
+//    natively": on that ack the standalone segment retires automatically, so
+//    the user's /gentle:customize placement and visibility settings always
+//    win. Without an ack — no shell, an older shell, or a registration the
+//    shell never accepted — the standalone fallback keeps working. Retirement
+//    is one-way for the session: there is no un-ack if the shell unloads
+//    mid-session.
 // 3. /zai:usage opens the framed ✿ Subscriptions panel /gentle:usage opens.
 import type {
 	ExtensionAPI,
@@ -40,6 +48,14 @@ const REFRESH_MS = 5 * 60_000;
 // bus, where gentle-shell validates the shape and ignores anything else.
 export const USAGE_SOURCE_EVENT = "gentle-pi:usage-source/v1";
 export const USAGE_SOURCE_SCHEMA = "gentle-pi.usage-source/v1";
+// The shell's acknowledgement, mirrored verbatim from gentle-shell's
+// lib/shell-usage.ts: emitted back on the bus for every registration the
+// shell accepts (replacements included; malformed registrations are never
+// acked). The ack means "the shell accepted the registration and meters this
+// provider natively" — the cue for this extension to retire its standalone
+// segment for that provider.
+export const USAGE_SOURCE_ACK_EVENT = "gentle-pi:usage-source-ack/v1";
+export const USAGE_SOURCE_ACK_SCHEMA = "gentle-pi.usage-source-ack/v1";
 
 /** The slice of pi's EventBus the usage-source registration needs. */
 export interface UsageSourceBus {
@@ -90,6 +106,14 @@ export default function zaiUsageExtension(pi: ExtensionAPI): void {
 	let fetchedAt = 0;
 	let hidden = false;
 	let timer: ReturnType<typeof setInterval> | undefined;
+	// Providers gentle-shell has acknowledged metering natively: their
+	// standalone segment stays retired so the shell's /gentle:customize
+	// placement and visibility settings win. The ack has no inverse, so the
+	// set only grows for the life of the extension.
+	const nativeMetered = new Set<string>();
+	// Most recent context seen; the ack event carries no context of its own,
+	// so the listener repaints with this one.
+	let latestCtx: ExtensionContext | undefined;
 
 	const providerOf = (ctx: ExtensionContext): string | undefined =>
 		ctx.model?.provider;
@@ -105,11 +129,17 @@ export default function zaiUsageExtension(pi: ExtensionAPI): void {
 	}
 
 	function paint(ctx: ExtensionContext): void {
+		latestCtx = ctx;
 		if (!ctx.hasUI) return;
 		const ui = ctx.ui as { setStatus(key: string, text: string | undefined): void };
+		const provider = providerOf(ctx);
+		const retired =
+			hidden ||
+			!current ||
+			(provider !== undefined && nativeMetered.has(provider));
 		ui.setStatus(
 			STATUS_KEY,
-			hidden || !current ? undefined : renderUsageBar(current, bindTheme(ctx)),
+			!retired && current ? renderUsageBar(current, bindTheme(ctx)) : undefined,
 		);
 	}
 
@@ -153,6 +183,28 @@ export default function zaiUsageExtension(pi: ExtensionAPI): void {
 		}
 		timer = setInterval(() => void refresh(ctx, false), REFRESH_MS);
 	}
+
+	// Defensive parse in the same style as gentle-shell's own payload parsers:
+	// the ack crosses the bus from another extension, so anything that is not
+	// an ack for a z.ai provider is ignored rather than trusted.
+	function asUsageSourceAck(value: unknown): string | undefined {
+		if (!value || typeof value !== "object") return undefined;
+		const raw = value as Record<string, unknown>;
+		if (raw.schema !== USAGE_SOURCE_ACK_SCHEMA) return undefined;
+		if (typeof raw.provider !== "string" || !ZAI_USAGE_PROVIDERS.includes(raw.provider)) return undefined;
+		return raw.provider;
+	}
+
+	// Subscribed at factory time — before any session_start fires — so an ack
+	// for the first registration can never arrive without a listener. On an
+	// accepted registration the shell meters the provider natively and the
+	// standalone segment retires (paint clears it for the active provider).
+	pi.events.on(USAGE_SOURCE_ACK_EVENT, (payload) => {
+		const provider = asUsageSourceAck(payload);
+		if (!provider) return;
+		nativeMetered.add(provider);
+		if (latestCtx) paint(latestCtx);
+	});
 
 	pi.on("session_start", async (_event, ctx) => {
 		// Both providers, every session: gentle-shell listens from its factory
@@ -203,6 +255,16 @@ export default function zaiUsageExtension(pi: ExtensionAPI): void {
 					"warning",
 				);
 				return;
+			}
+			if (arg === "on" && nativeMetered.has(provider)) {
+				// The shell accepted the registration and meters this provider
+				// natively: its /gentle:customize settings keep winning, so "on"
+				// cannot resurrect the standalone segment — but the command's
+				// documented refresh-and-panel contract still runs below.
+				ctx.ui.notify(
+					`gentle-shell meters ${provider} usage natively, so the standalone segment stays hidden`,
+					"info",
+				);
 			}
 			await refresh(ctx, true, true);
 			if (!current) return; // refresh() already announced the failure
