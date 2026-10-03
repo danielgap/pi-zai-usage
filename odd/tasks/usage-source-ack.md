@@ -25,4 +25,9 @@ Delivery: feature branch `feat/usage-source-ack` from `13b2828`. Checks: `pnpm t
 
 ## Next step
 
-RDD preflight (`gentle-ai review mode status` reads on globally), then push/PR/publish remain the user's decisions.
+Push/PR/publish remain the user's decisions (npm publish would be 0.5.0).
+
+## Review receipt
+
+- RDD native review: lineage `review-82fd162a58953b5f`, tier medium, lens review-reliability, state **approved**, authority burned (2026-09-25).
+- Advisory findings (non-blocking, later work): R3-ack-repaint-uses-non-ui-ctx SUGGESTION `extensions/zai_usage.ts:206`; R3-polling-continues-after-retirement SUGGESTION `extensions/zai_usage.ts:136-139`; R3-stale-native-metered-set WARNING `extensions/zai_usage.ts:112-113` (the documented no-un-ack limitation).
