@@ -1,8 +1,12 @@
 // Z.ai subscriptions overlay: a framed panel over the usage store, ported
 // from gentle-pi's lib/shell-usage-view.ts so /zai:usage shows exactly what
 // /gentle:usage shows. It reads the usage on every render, so a refresh only
-// needs to record. No pi-tui imports: the component contract (render /
-// invalidate / handleInput) and a local escape check are all it needs.
+// needs to record. Escape detection delegates to pi-tui's matchesKey — the
+// same matcher the ported panel uses — because terminals with the Kitty
+// keyboard protocol or xterm modifyOtherKeys active never send a bare 0x1b
+// for the escape key (they send CSI 27 u style sequences instead).
+
+import { Key, matchesKey } from "@earendil-works/pi-tui";
 
 import {
 	ACTIVE_MARK,
@@ -53,8 +57,9 @@ export class ZaiUsageView {
 	}
 
 	handleInput(data: string): void {
-		// Lone ESC is what terminals send for the escape key.
-		if (data === "\x1b" || data === "q") {
+		// matchesKey covers every escape encoding pi-tui accepts: the bare
+		// \x1b byte, Kitty CSI-u sequences, and xterm modifyOtherKeys.
+		if (matchesKey(data, Key.escape) || data === "q") {
 			this.deps.onClose();
 			return;
 		}
