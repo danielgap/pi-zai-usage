@@ -118,7 +118,7 @@ Releases publish automatically from version tags through [`.github/workflows/pub
    git push origin refs/tags/vX.Y.Z
    ```
 
-3. CI installs, tests, typechecks, packs, publishes to npm with provenance, creates the GitHub Release if it is missing, and verifies the registry.
+3. CI installs, tests, typechecks, packs, publishes to npm with provenance, creates the GitHub Release if it is missing, and verifies the registry. A brand-new package version can take a few minutes to appear in the registry after a successful publish, so the Verify npm step retries for up to 3 minutes before failing.
 
 First-time setup: add an `NPM_TOKEN` secret with publish rights for `@danielgap/gentle-shell-zai-usage` under **Settings → Secrets and variables → Actions**. A token restricted to the old unscoped package will not work for this new name; update its permissions or replace the secret if needed. A run that failed for publication-only reasons can be retried without moving its tag (`gh workflow run publish.yml -f tag=vX.Y.Z`).
 
