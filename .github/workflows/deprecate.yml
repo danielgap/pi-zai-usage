@@ -1,0 +1,66 @@
+# Deprecate an npm package name owned by this repository.
+#
+# Triggers: workflow_dispatch only (manual, one-off).
+#
+# Current purpose: mark every version of the retired
+# @danielgap/gentle-shell-zai-usage name (v0.4.1-v0.4.3) as deprecated with a
+# pointer to @danielgap/pi-zai-usage, which replaced it starting at v0.4.4.
+#
+# Required secret: NPM_TOKEN with write access to the package being
+# deprecated at Settings → Secrets and variables → Actions.
+#
+# Note: deprecating with an empty message UN-deprecates; the default input
+# message must stay non-empty.
+
+name: deprecate
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "npm package name to deprecate"
+        required: true
+        default: "@danielgap/gentle-shell-zai-usage"
+        type: string
+      message:
+        description: "Deprecation message shown on install"
+        required: true
+        default: "Renamed to @danielgap/pi-zai-usage"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deprecate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deprecate every version of the package
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PACKAGE: ${{ inputs.package }}
+          MESSAGE: ${{ inputs.message }}
+        run: |
+          set -euo pipefail
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "${HOME}/.npmrc"
+          npm deprecate "${PACKAGE}@*" "${MESSAGE}"
+
+      - name: Verify the registry flags every version as deprecated
+        env:
+          PACKAGE: ${{ inputs.package }}
+        run: |
+          set -euo pipefail
+          enc="$(printf '%s' "${PACKAGE}" | jq -Rr '@uri')"
+          for i in $(seq 1 18); do
+            undeprecated="$(curl -sf "https://registry.npmjs.org/${enc}" \
+              | jq '[.versions[] | select(.deprecated == null)] | length')" \
+              || undeprecated="unreachable"
+            if [ "${undeprecated}" = "0" ]; then
+              echo "OK: every published version of ${PACKAGE} is deprecated"
+              exit 0
+            fi
+            echo "attempt ${i}: ${undeprecated} version(s) not yet flagged; retrying in 10s"
+            sleep 10
+          done
+          echo "::error::registry still shows an undeprecated version of ${PACKAGE} after 3 minutes"
+          exit 1
