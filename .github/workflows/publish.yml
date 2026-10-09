@@ -1,4 +1,4 @@
-# Publish @danielgap/gentle-shell-zai-usage to npm and create the GitHub
+# Publish @danielgap/pi-zai-usage to npm and create the GitHub
 # Release from a version tag.
 #
 # Triggers:
@@ -13,7 +13,7 @@
 #   - tests and typecheck must pass before anything is published
 #
 # Required secret: NPM_TOKEN (automation or granular token with publish
-# rights for @danielgap/gentle-shell-zai-usage) at Settings → Secrets and
+# rights for @danielgap/pi-zai-usage) at Settings → Secrets and
 # variables → Actions.
 
 name: publish

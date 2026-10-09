@@ -1,4 +1,4 @@
-# Gentle Shell Z.ai usage
+# pi-zai-usage
 
 [![pi package](https://img.shields.io/badge/Pi-package-6f42c1)](https://github.com/danielgap/pi-zai-usage)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -8,7 +8,7 @@
 
 **Meter your Z.ai GLM Coding Plan usage in pi, without guessing when the window resets.**
 
-`@danielgap/gentle-shell-zai-usage` adds a usage meter for the Z.ai GLM Coding Plan to [pi](https://shittycodingagent.ai), designed for Gentle Shell (npm: `gentle-pi`). With Gentle Shell installed, it registers Z.ai through the shell's official third-party usage-source event and feeds its native usage surfaces, just like built-in Codex/Claude sources. Without Gentle Shell, it still provides a standalone status-bar segment, a `/zai:usage` subscriptions panel, and automatic refresh while a Z.ai provider is active.
+`@danielgap/pi-zai-usage` adds a usage meter for the Z.ai GLM Coding Plan to [pi](https://shittycodingagent.ai), designed for Gentle Shell (npm: `gentle-pi`). With Gentle Shell installed, it registers Z.ai through the shell's official third-party usage-source event and feeds its native usage surfaces, just like built-in Codex/Claude sources. Without Gentle Shell, it still provides a standalone status-bar segment, a `/zai:usage` subscriptions panel, and automatic refresh while a Z.ai provider is active.
 
 Z.ai meters the GLM Coding Plan through an undocumented quota endpoint. This package turns that endpoint into visible windows — plan level, used percentage per window, and when each one resets — and stays out of your way the moment you switch to another provider.
 
@@ -40,7 +40,7 @@ This extension fixes the visibility. You bring the API key you already configure
 ## Install
 
 ```bash
-pi install npm:@danielgap/gentle-shell-zai-usage
+pi install npm:@danielgap/pi-zai-usage
 ```
 
 From a local checkout (without npm):
@@ -109,18 +109,18 @@ This extension was [built with Gentle AI](https://github.com/Gentleman-Programmi
 
 Releases publish automatically from version tags through [`.github/workflows/publish.yml`](.github/workflows/publish.yml):
 
-1. Bump `package.json` to the next version, commit, and push to `main`. The old unscoped name `pi-zai-usage` belongs to another npm maintainer; publish only `@danielgap/gentle-shell-zai-usage`. The existing `v0.4.0` tag cannot be reused for the renamed package; the next release is `v0.4.1`.
+1. Bump `package.json` to the next version, commit, and push to `main`. The old unscoped name `pi-zai-usage` belongs to another npm maintainer, and `@danielgap/gentle-shell-zai-usage` (v0.4.1–v0.4.3) is deprecated in favor of this name; publish only `@danielgap/pi-zai-usage`.
 2. Tag the release on the freshly fetched `origin/main` commit — the workflow verifies the tag is annotated, matches `package.json`'s version, and points to a commit reachable from `main`:
 
    ```bash
    git fetch origin main --tags
-   git tag -a vX.Y.Z "$(git rev-parse 'origin/main^{commit}')" -m "@danielgap/gentle-shell-zai-usage vX.Y.Z"
+   git tag -a vX.Y.Z "$(git rev-parse 'origin/main^{commit}')" -m "@danielgap/pi-zai-usage vX.Y.Z"
    git push origin refs/tags/vX.Y.Z
    ```
 
 3. CI installs, tests, typechecks, packs, publishes to npm with provenance, creates the GitHub Release if it is missing, and verifies the registry. A brand-new package version can take a few minutes to appear in the registry after a successful publish, so the Verify npm step retries for up to 3 minutes before failing.
 
-First-time setup: add an `NPM_TOKEN` secret with publish rights for `@danielgap/gentle-shell-zai-usage` under **Settings → Secrets and variables → Actions**. A token restricted to the old unscoped package will not work for this new name; update its permissions or replace the secret if needed. A run that failed for publication-only reasons can be retried without moving its tag (`gh workflow run publish.yml -f tag=vX.Y.Z`).
+First-time setup: add an `NPM_TOKEN` secret with publish rights for `@danielgap/pi-zai-usage` under **Settings → Secrets and variables → Actions**. A token restricted to the deprecated `@danielgap/gentle-shell-zai-usage` name will not work for this name; update its permissions or replace the secret if needed. A run that failed for publication-only reasons can be retried without moving its tag (`gh workflow run publish.yml -f tag=vX.Y.Z`).
 
 ## Development
 
